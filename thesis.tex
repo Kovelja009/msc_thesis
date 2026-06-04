@@ -1,0 +1,161 @@
+\documentclass[12pt]{article}
+
+\usepackage[a4paper,  top=1.3in, bottom=1.5in, left=1.5in, right=1.5in]{geometry}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+
+
+\usepackage{graphicx, float}
+\usepackage{adjustbox}
+\graphicspath{{images/}}
+
+
+%---------------- for graphs ----------------
+\usepackage{tikz}
+\usepackage{listofitems} % for \readlist to create arrays
+\usetikzlibrary{arrows.meta} % for arrow size
+\usepackage[outline]{contour} % glow around text
+\contourlength{1.4pt}
+
+% COLORS
+\usepackage{xcolor}
+\colorlet{myred}{red!80!black}
+\colorlet{myblue}{blue!80!black}
+\colorlet{mygreen}{green!60!black}
+\colorlet{myorange}{orange!70!red!60!black}
+\colorlet{mydarkred}{red!30!black}
+\colorlet{mydarkblue}{blue!40!black}
+\colorlet{mydarkgreen}{green!30!black}
+
+% STYLES
+\tikzset{
+  >=latex, % for default LaTeX arrow head
+  node/.style={thick,circle,draw=myblue,minimum size=22,inner sep=0.5,outer sep=0.6},
+  node in/.style={node,green!20!black,draw=mygreen!30!black,fill=mygreen!25},
+  node hidden/.style={node,blue!20!black,draw=myblue!30!black,fill=myblue!20},
+  node convol/.style={node,orange!20!black,draw=myorange!30!black,fill=myorange!20},
+  node out/.style={node,red!20!black,draw=myred!30!black,fill=myred!20},
+  connect/.style={thick,mydarkblue}, %,line cap=round
+  connect arrow/.style={-{Latex[length=4,width=3.5]},thick,mydarkblue,shorten <=0.5,shorten >=1},
+  node 1/.style={node in}, % node styles, numbered for easy mapping with \nstyle
+  node 2/.style={node hidden},
+  node 3/.style={node out}
+}
+\def\nstyle{int(\lay<\Nnodlen?min(2,\lay):3)} % map layer number onto 1, 2, or 3
+
+
+\tikzset{basic/.style={draw,fill=none,
+                       text badly centered,minimum width=3em}}
+\tikzset{input/.style={basic,circle,minimum width=3.5em}}
+\tikzset{weights/.style={basic,rectangle,minimum width=2em}}
+\tikzset{functions/.style={basic,circle, minimum width=4em}}
+\newcommand{\addaxes}{\draw (0em,1em) -- (0em,-1em)
+                            (-1em,0em) -- (1em,0em);}
+\newcommand{\relu}{\draw[line width=1.5pt] (-1em,0) -- (0,0)
+                                (0,0) -- (0.75em,0.75em);}
+\newcommand{\stepfunc}{\draw[line width=1.5pt] (0.65em,0.65em) -- (0,0.65em) 
+                                    -- (0,-0.65em) -- (-0.65em,-0.65em);}
+
+%-----------------------------------------------------
+
+
+\renewcommand{\figurename}{Slika}
+
+
+
+\renewcommand{\baselinestretch}{1.2} % Line spacing
+
+% Parskip and parindent
+\setlength{\parindent}{0pt} % Begin of paragraph indentation
+\setlength{\parskip}{1em} % Paragraph spacing
+
+%--- for references ---------
+\usepackage[
+   backend=biber,
+   style=numeric,
+   sorting=none
+   ]{biblatex}
+
+\addbibresource{bibliography.bib}
+\AtBeginBibliography{\vspace*{10pt}}
+%----------------------------
+
+%----------- toc ------------------------
+\usepackage{tocloft}
+\usepackage{fancyhdr}
+% \setlength{\cftbeforesecskip}{0pt} % Adjust the spacing before section entries
+% \setlength{\cftbeforesubsecskip}{0pt} % Adjust the spacing before subsection entries
+%----------------------------------------
+
+\begin{document}
+
+   % Title Page
+   \newgeometry{top=1in, bottom=1in, left=1in, right=1in} % New margins for title page
+   \begin{titlepage}
+      \begin{center}
+         
+         % add your university logo here
+         % negative value moves the logo up
+         \vspace*{-1in}
+         \includegraphics[width=0.4\textwidth]{raf_logo.png}
+
+         % set font size to 14pt
+         \vspace{0.7in}
+         \Large
+         \textbf{MASTER RAD}
+         
+         % set horizontal margin for the title to 1.5in and center it
+         \vspace{0.7in}
+         \Huge
+         \textbf{TT-GS} - Rasterizacija 3D \\ Gaussian Splatting algoritma \\na Tenstorrent hardveru
+         
+         \vspace{1in}
+
+
+         \fontsize{14pt}{18pt}\selectfont
+         \textbf{Vanja Kovinić} \\
+         \textbf{M 11/2024}
+         \vspace*{1.4in}
+         
+         \begin{center}
+            \normalsize
+            \begin{tabular}{p{0.7\textwidth} p{0.5\textwidth}}
+               \fontsize{14pt}{18pt}\selectfont   
+               \textbf{Mentor:} & 
+            
+               \fontsize{14pt}{18pt}\selectfont
+               \textbf{Komisija:} \\
+               dr Nemanja Ilić & dr Nemanja Ilić \\
+                                 & dr Nevena Marić \\
+                                 & dr Goran Rakočević \\
+            \end{tabular}
+         \end{center}
+
+         \vspace*{0.4in}
+
+         \normalsize
+         Beograd, jul 2026.
+
+
+         
+      \end{center}
+   \end{titlepage}
+   \restoregeometry % Restore original margins
+
+   \newpage
+   \newgeometry{top=1.3in, bottom=2.2in, left=1.4in, right=1.4in} % New margins for title page
+   
+   % Table of Contents
+   \renewcommand{\contentsname}{Sadržaj}
+   \addtocontents{toc}{\protect\thispagestyle{empty}}
+   \tableofcontents
+   \thispagestyle{empty} % Remove page numbers
+
+   \restoregeometry % Restore original margins
+   \newpage
+
+\end{document}
