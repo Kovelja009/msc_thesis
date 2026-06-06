@@ -12,12 +12,15 @@
 \usepackage{graphicx, float}
 \usepackage{adjustbox}
 \graphicspath{{images/}}
+\usepackage{microtype}
+\setlength{\emergencystretch}{2em}
 
 
 %---------------- for graphs ----------------
 \usepackage{tikz}
 \usepackage{listofitems} % for \readlist to create arrays
 \usetikzlibrary{arrows.meta} % for arrow size
+\usetikzlibrary{positioning, calc, fit, backgrounds}
 \usepackage[outline]{contour} % glow around text
 \contourlength{1.4pt}
 
@@ -227,7 +230,7 @@
             Implementiran je \textbf{tt-metal} kernel koje izvršava \textit{alpha blending} deo 3DGS algoritma
             na Tenstorrent hardveru. To je prva implementacija 3DGS algoritma na Tenstorrent čipu.
       
-      \item \textbf{Poređenje 3 razčličita \textit{backend}-a}
+      \item \textbf{Poređenje 3 različita \textit{backend}-a}
             
             Poređenje performansi 3 različitih \textit{backend}-a: CPU, GPU i Tenstorrent.
 
@@ -242,6 +245,371 @@
    \end{itemize}
 
    Zajedno, ova rešenja dovode do ubrzanja od preko $20\times$ u odnosu na CPU implementaciju.
+
+   %====================================================================
+   \newpage
+   \section{3D Gaussian Splatting}
+   %====================================================================
+
+   \textbf{3DGS} scena je predstavljena \emph{eksplicitno} pomoću stotine hiljada
+   do nekoliko miliona Gausijana raspoređenih u prostoru, od kojih svaki pokriva
+   relativno mali, ograničen deo zapremine. Za razliku od \textbf{NeRF}-a, gde je scena
+   skrivena u težinama neuralne mreže, ovde su svi parametri scene direktno
+   dostupni, pa se slika dobija rasterizacijom umesto integraljenjem po zracima, gde se po jednom
+   zraku neuronska mreža više puta koristi za aproksimaciju boje i gustine.
+   Ta razlika je ono što 3DGS čini dovoljno brzim za interaktivno renderovanje.
+
+   \begin{figure}[H]
+      \centering
+      \vspace*{0.7cm}
+      \includegraphics[width=1\textwidth]{tt_train_render.jpeg}
+      \caption{Primer scene renderovane 3DGS algoritmom na Tenstorrent
+      \textit{Blackhole} čipu. Providne, izdužene elipse su karakteristične za
+      reprezentaciju zasnovanu na Gausijanima.}
+      \label{fig:teaser}
+   \end{figure}
+
+   Renderovanje jedne slike svodi se na algoritam prikazan na \textit{Slici~\ref{fig:pipeline}}:
+   scena se učitava, svaki Gausijan se projektuje na 2D ravan slike, dodeljuje se
+   \textit{tile}-ovima koje pokriva, Gausijani se sortiraju po dubini i, na kraju,
+   stapaju u boju piksela. Poglavlje prati taj redosled - od reprezentacije
+   scene (2.1) do \textit{alpha blending} jednačine (2.4), koja je ujedno i deo algoritma
+   prebačen na Tenstorrent hardver.
+
+   \begin{figure}[H]
+      \centering
+      \begin{tikzpicture}[
+         >=Latex,
+         stage/.style={draw, rounded corners, minimum width=2.0cm, minimum height=0.95cm,
+                       align=center, font=\small, thick},
+         hl/.style={draw, rounded corners, minimum width=2.0cm, minimum height=0.95cm,
+                    align=center, font=\small, very thick, fill=myorange!20, draw=myorange!70!black},
+      ]
+         \node[stage] (load) {Učitavanje\\scene};
+         \node[stage, right=0.6cm of load] (proj) {Projekcija\\3D$\to$2D};
+         \node[stage, right=0.6cm of proj] (tile) {Dodela\\\textit{tile}-ovima};
+         \node[stage, below=0.9cm of tile] (sort) {Sortiranje\\po dubini};
+         \node[hl, left=0.6cm of sort] (blend) {\textit{Alpha}\\\textit{blending}};
+         \node[stage, left=0.6cm of blend] (img) {Slika};
+         \draw[->, thick] (load) -- (proj);
+         \draw[->, thick] (proj) -- (tile);
+         \draw[->, thick] (tile) -- (sort);
+         \draw[->, thick] (sort) -- (blend);
+         \draw[->, thick] (blend) -- (img);
+      \end{tikzpicture}
+      \caption{Algoritam 3DGS renderovanja po fazama. Prve četiri faze pripremaju i
+      organizuju podatke; \textit{alpha blending} (istaknuto) predstavlja najveći deo računa i
+      proizvodi konačnu sliku. Upravo je ta faza prebačena na Tenstorrent hardver.}
+      \label{fig:pipeline}
+   \end{figure}
+
+   \subsection{Reprezentacija scene}
+
+   Scena je skup od $N$ Gausijana. Svaki Gausijan opisan je sa četiri grupe
+   parametara: centrom $\mu \in \mathbb{R}^3$, kovarijansom $\Sigma \in \mathbb{R}^{3\times3}$,
+   skalarnom vrednošću \textit{opacity} $o \in [0, 1]$ i bojom $c$, koja se u opštem
+   modelu zadaje sferičnim harmonicima.
+   Prostornu raspodelu zadaje nenormalizovana Gausova funkcija
+   \begin{equation}\label{eq:gauss}
+      G(x) = \exp\!\left(-\tfrac{1}{2}(x - \mu)^\top \Sigma^{-1} (x - \mu)\right),
+   \end{equation}
+   koja ima vrednost $1$ u centru i opada ka nuli sa udaljavanjem. Kovarijansa
+   $\Sigma$ određuje oblik i orijentaciju: Gausijan je u opštem slučaju anizotropan,
+   tj. izdužen u nekom pravcu (Odeljak 2.2). \textit{Tabela~\ref{tab:notacija}}
+   sažima oznake korišćene u ovom poglavlju.
+
+   \begin{table}[H]
+      \centering
+      \begin{tabular}{ll}
+         \hline
+         Oznaka & Značenje \\
+         \hline
+         $\mu$ & centar Gausijana (3D) \\
+         $\Sigma$ & 3D kovarijansa \\
+         $S,\ R$ & matrica skale i rotacije; $\Sigma = R S S^\top R^\top$ \\
+         $q$ & jedinični kvaternion rotacije \\
+         $o$ & \textit{opacity}, $o \in [0,1]$ \\
+         $c$ & boja (RGB) \\
+         SH & sferični harmonici (boja zavisna od pravca; ovde stepen 0) \\
+         $G(x)$ & Gausova funkcija \\
+         $W,\ J$ & matrica pogleda i Jakobijan projekcije \\
+         $\Sigma'$ & 2D (projektovana) kovarijansa \\
+         $\alpha_i$ & efektivna alfa $i$-tog Gausijana u datom pikselu \\
+         $T_i$ & transmitansa: $T_i = \prod_{j<i}(1-\alpha_j)$ \\
+         $C$ & finalna boja piksela \\
+         $N,\ P$ & broj Gausijana / broj piksela \\
+         \hline
+      \end{tabular}
+      \caption{Oznake korišćene u poglavlju.}
+      \label{tab:notacija}
+   \end{table}
+
+   Sferični harmonici (engl.\ \textit{spherical harmonics}, \textbf{SH}) su skup
+   ortonormiranih baznih funkcija definisanih na sferi pravaca. Boja Gausijana
+   izražava se kao linearna kombinacija tih funkcija, pri čemu koeficijenti određuju
+   kako se boja menja sa pravcem gledanja - ista tačka može imati različite boje iz
+   različitih uglova; viši stepen \textbf{SH} uvodi finije ugaone varijacije i tako
+   omogućava reprodukciju refleksija i sjaja (\textit{Slika~\ref{fig:sh}}). U ovom
+   radu koristi se samo nulti stepen, čija je jedina bazna funkcija konstanta, pa je
+   boja nezavisna od pravca i svodi se na fiksni RGB vektor $c \in [0,1]^3$, dobijen
+   kao $c = 0.5 + C_0 \cdot f_{dc}$, gde je $C_0 = 1/(2\sqrt{\pi})$ a $f_{dc}$ nulti
+   \textbf{SH} koeficijent. Viši stepeni nisu implementirani jer ne menjaju strukturu
+   \textit{alpha blending} algoritma, već samo način na koji se računa boja.
+
+   \begin{figure}[H]
+      \centering
+      \includegraphics[width=0.72\textwidth]{spherical-harmonic.jpg}
+      \caption{Realni sferični harmonici $Y_p^q$ na sferi, za stepene $p = 0$ do $3$
+      (vrste) i redove $q = -p, \dots, p$ (kolone); boja označava vrednost funkcije
+      (plavo $-1$, crveno $+1$). Stepen $p = 0$ (vrh) je konstanta i jedini se koristi
+      u ovom radu, dok viši stepeni uvode sve finije ugaone varijacije~\cite{guezenoc2021}.}
+      \label{fig:sh}
+   \end{figure}
+
+   Parametri scene rezultat su prethodnog treniranja i učitavaju se iz
+   \textit{.ply} fajla; ovaj rad bavi se isključivo renderovanjem, ne i treniranjem.
+
+   \subsection{Geometrija Gausijana: skala i rotacija}
+
+   Kovarijansa mora biti simetrična i pozitivno semidefinitna da bi predstavljala
+   validan oblik - u suprotnom $\Sigma^{-1}$ iz jednačine \eqref{eq:gauss} ne
+   definiše ispravnu Gausovu raspodelu. Proizvoljnih šest brojeva ne garantuje to
+   svojstvo, pa se $\Sigma$ ne pamti direktno, već preko skale i rotacije:
+   \begin{equation}\label{eq:cov}
+      \Sigma = R\,S\,S^\top R^\top = (RS)(RS)^\top,
+   \end{equation}
+   gde je $S = \mathrm{diag}(s_x, s_y, s_z)$ dijagonalna matrica skala, a $R$
+   matrica rotacije. Zapis $(RS)(RS)^\top$ je oblika $MM^\top$, pa je $\Sigma$
+   pozitivno semidefinitna po konstrukciji, za bilo koje vrednosti $S$ i $R$.
+   Geometrijski, jedinična sfera se najpre razvuče skalama u osno poravnat
+   elipsoid, a zatim rotira u svetski koordinatni sistem (\textit{Slika~\ref{fig:cov}}).
+
+   \begin{figure}[H]
+      \centering
+      \begin{tikzpicture}[>=Latex]
+         \draw[thick, myblue] (0,0) circle (0.65);
+         \node at (0,-1.15) {\small jedinična sfera};
+         \draw[->, thick] (1.0,0) -- (2.1,0) node[midway, above] {\small $S$};
+         \draw[thick, mygreen] (3.1,0) ellipse (1.0 and 0.42);
+         \node at (3.1,-1.15) {\small skaliranje};
+         \draw[->, thick] (4.4,0) -- (5.5,0) node[midway, above] {\small $R$};
+         \begin{scope}[shift={(6.7,0)}, rotate=28]
+            \draw[thick, myred] (0,0) ellipse (1.0 and 0.42);
+            \draw[->, thick, gray] (0,0) -- (1.0,0);
+            \draw[->, thick, gray] (0,0) -- (0,0.42);
+         \end{scope}
+         \node at (6.7,-1.15) {\small rotacija ($\Sigma$)};
+      \end{tikzpicture}
+      \caption{Konstrukcija kovarijanse $\Sigma = R S S^\top R^\top$: jedinična
+      sfera se skalira matricom $S$ u osno poravnat elipsoid, a zatim rotira
+      matricom $R$. Oblik je pozitivno semidefinitan po konstrukciji.}
+      \label{fig:cov}
+   \end{figure}
+
+   Rotacija se pamti kao jedinični kvaternion $q = (q_0, q_1, q_2, q_3)$ umesto kao
+   matrica, jer ima četiri komponente umesto devet i ostaje validna rotacija nakon
+   normalizacije. Odgovarajuća matrica rotacije je
+   \begin{equation}\label{eq:quat}
+      R(q) = \begin{bmatrix}
+         1 - 2(q_2^2 + q_3^2) & 2(q_1 q_2 - q_0 q_3) & 2(q_1 q_3 + q_0 q_2) \\
+         2(q_1 q_2 + q_0 q_3) & 1 - 2(q_1^2 + q_3^2) & 2(q_2 q_3 - q_0 q_1) \\
+         2(q_1 q_3 - q_0 q_2) & 2(q_2 q_3 + q_0 q_1) & 1 - 2(q_1^2 + q_2^2)
+      \end{bmatrix}.
+   \end{equation}
+
+   \subsection{Projekcija na ravan slike}
+
+   Da bi se Gausijan nacrtao, njegov 3D oblik mora se preslikati u 2D elipsu na
+   ravni slike. Centar se projektuje standardnom perspektivnom projekcijom, ali
+   kovarijansa zahteva više pažnje.
+
+   Najpre se Gausijan prebacuje iz svetskih u kamera-koordinate matricom pogleda
+   (engl.\ \textit{view matrix}) $W$ i translacijom $t$:
+   \begin{equation}\label{eq:view}
+      \mu_{cam} = W\mu + t, \qquad \Sigma_{cam} = W \Sigma W^\top.
+   \end{equation}
+   Druga jednakost sledi iz pravila da se kovarijansa pod linearnim preslikavanjem
+   $A$ transformiše kao $\mathrm{cov}(Ax) = A\,\mathrm{cov}(x)\,A^\top$: pošto je
+   linearni (rotacioni) deo te transformacije matrica $W$, kovarijansa se množi sa
+   $W$ i $W^\top$ sa obe strane.
+
+   Perspektivna projekcija preslikava tačku $(x, y, z)$ iz kamera-prostora na ravan
+   slike kao
+   \begin{equation}\label{eq:persp}
+      \pi(x, y, z) = \left(\, f_x \tfrac{x}{z} + c_x,\ \ f_y \tfrac{y}{z} + c_y \,\right),
+   \end{equation}
+   gde su $f_x, f_y$ žižne daljine a $(c_x, c_y)$ glavna tačka. Ovo preslikavanje je
+   nelinearno - deli sa $z$ - pa slika Gausove raspodele kroz $\pi$ u opštem slučaju
+   više nije Gausova.
+
+   \textbf{EWA} splatting \cite{ewa_splatting} taj problem rešava aproksimacijom
+   prvog reda: $\pi$ se u okolini centra zamenjuje svojom tangentnom linearnom
+   aproksimacijom, čiji je nagib Jakobijan $J = \partial \pi / \partial (x,y,z)$.
+   Diferenciranjem \eqref{eq:persp} dobija se
+   \begin{equation}\label{eq:jac}
+      J = \begin{bmatrix}
+         f_x/z & 0 & -f_x x / z^2 \\
+         0 & f_y/z & -f_y y / z^2
+      \end{bmatrix},
+   \end{equation}
+   što je dobra aproksimacija dokle god je Gausijan mali u odnosu na udaljenost od
+   kamere; za Gausijane vrlo blizu kamere linearizacija se kvari, što se rešava
+   ograničavanjem poluprečnika. Primenom istog pravila o transformaciji
+   kovarijanse, sada sa kompozicijom $JW$, dobija se 2D kovarijansa
+   \begin{equation}\label{eq:sigma2d}
+      \Sigma' = J\,W\,\Sigma\,W^\top J^\top,
+   \end{equation}
+   Pošto je $J$ dimenzije $2\times3$, proizvod je direktno $2\times2$ matrica -
+   kovarijansa elipse na ekranu.
+
+   Na dijagonalu $\Sigma'$ dodaje se mali član (\textit{low-pass filter}, reda
+   $0.3$ piksela$^2$): bez njega bi Gausijani manji od piksela imali gotovo
+   singularnu $\Sigma'$ i izazivali alias, dok dilatacija obezbeđuje da svaki pokriva
+   bar oko jednog piksela. Najzad, iz $\Sigma'$ se računa poluprečnik omotača. Za
+   simetričnu matricu $\Sigma' = \left(\begin{smallmatrix} a & b \\ b & c \end{smallmatrix}\right)$
+   sopstvene vrednosti su
+   \begin{equation}\label{eq:eig}
+      \lambda_{1,2} = \frac{a+c}{2} \pm \sqrt{\left(\frac{a-c}{2}\right)^2 + b^2},
+   \end{equation}
+   a veća od njih, $\lambda_{max}$, jednaka je varijansi duž glavne ose elipse.
+   Poluprečnik se uzima na $3\sigma$, tj.\ $r = 3\sqrt{\lambda_{max}}$, čime je
+   obuhvaćen praktično ceo vidljivi trag Gausijana. Taj poluprečnik određuje koje
+   piksele - i koje \textit{tile}-ove - Gausijan može da dotakne.
+   \textit{Slika~\ref{fig:proj}} prikazuje ceo postupak.
+
+   \begin{figure}[H]
+      \centering
+      \begin{tikzpicture}[>=Latex]
+         \fill (0,0) circle (1.6pt);
+         \node[left] at (-0.1,0) {\small kamera};
+         \draw[->, thick] (0,0) -- (6.2,0) node[below right] {\small $z$};
+         \draw[thick] (2,-1.3) -- (2,1.3);
+         \node[align=center] at (2,-1.75) {\small ravan slike};
+         \begin{scope}[shift={(4.8,0.45)}, rotate=22]
+            \draw[thick, myred, fill=myred!10] (0,0) ellipse (0.85 and 0.4);
+         \end{scope}
+         \node[myred] at (5.7,1.15) {\small $\Sigma$ (3D)};
+         \draw[gray, dashed] (0,0) -- (5.65,1.0);
+         \draw[gray, dashed] (0,0) -- (5.1,-0.15);
+         \draw[thick, myblue, fill=myblue!15] (2,0.38) ellipse (0.06 and 0.33);
+         \node[myblue, right] at (2.2,0.75) {\small $\Sigma'$ (2D)};
+      \end{tikzpicture}
+      \caption{Projekcija Gausijana na ravan slike. 3D oblik $\Sigma$ preslikava se
+      u 2D elipsu $\Sigma'$, pri čemu se nelinearna perspektivna projekcija
+      linearizuje Jakobijanom oko centra (\textbf{EWA} splatting).}
+      \label{fig:proj}
+   \end{figure}
+
+   \subsection{\textit{Alpha blending}}
+
+   Boja piksela nastaje slaganjem svih Gausijana koji ga prekrivaju, poređanih od
+   najbližeg ka najdaljem. Polazna tačka je integral zapreminskog renderovanja
+   \cite{max_volume_rendering}, koji opisuje svetlost duž zraka, od bliske granice
+   $t_n$ do daleke $t_f$, kroz medijum sa emisijom $c(t)$ i gustinom $\sigma(t)$:
+   \begin{equation}\label{eq:vri}
+      C = \int_{t_n}^{t_f} T(t)\,\sigma(t)\,c(t)\,dt, \qquad
+      T(t) = \exp\!\left(-\int_{t_n}^{t} \sigma(s)\,ds\right).
+   \end{equation}
+   Veličina $T(t)$ je transmitansa - udeo svetlosti koji bez prepreke stiže do
+   tačke $t$. Diskretizacijom po nizu sortiranih Gausijana integral prelazi u sumu
+   \begin{equation}\label{eq:discrete}
+      C = \sum_{i=1}^{n} c_i\,\alpha_i\,T_i, \qquad T_i = \prod_{j=1}^{i-1}(1 - \alpha_j),
+   \end{equation}
+   što je isti \textit{front-to-back} postupak slaganja poznat iz kompozicije slika
+   \cite{porter_duff}. Transmitansa $T_i$ je proizvod propusnosti svih Gausijana
+   ispred $i$-tog; kreće od $1$ i monotono opada.
+
+   Za 3DGS, efektivna alfa $i$-tog Gausijana u datom pikselu je njegov
+   \textit{opacity} pomnožen vrednošću 2D Gausove funkcije u tom pikselu:
+   \begin{equation}\label{eq:alpha}
+      \alpha_i = o_i \cdot \exp\!\left(-\tfrac{1}{2}\,d^\top \Sigma'^{-1} d\right),
+      \qquad d = x_{px} - \mu'_i,
+   \end{equation}
+   gde je $d$ pomeraj piksela od projektovanog centra $\mu'_i$. Slaganje se odvija
+   inkrementalno: za svaki Gausijan ažuriraju se akumulirana boja i transmitansa,
+   \begin{equation}\label{eq:update}
+      C \leftarrow C + c_i\,\alpha_i\,T, \qquad T \leftarrow T\,(1 - \alpha_i),
+   \end{equation}
+   a postupak se prekida čim $T$ padne ispod malog praga, jer dalji Gausijani više
+   ne mogu vidno doprineti pikselu (\textit{Slika~\ref{fig:blend}}). Jednačine
+   \eqref{eq:alpha} i \eqref{eq:update} čine jezgro renderera i predstavljaju
+   upravo deo algoritma koji je u ovom radu implementiran kao Tenstorrent kernel.
+
+   \begin{figure}[H]
+      \centering
+      \begin{tikzpicture}[>=Latex]
+         \draw[->, thick] (-0.6,0) -- (8.2,0) node[right] {\small dubina};
+         \node[left] at (-0.6,0) {\small piksel};
+         \foreach \x/\col/\lab in {1/myred/1, 3/myorange/2, 5/mygreen/3, 7/myblue/4} {
+            \draw[thick, \col, fill=\col!15] (\x,0) ellipse (0.7 and 0.45);
+            \node[\col] at (\x,0.78) {\small $G_{\lab}$};
+         }
+         \node[anchor=west] at (-0.6,-1.35)
+            {\small $T:\ 1 \to (1-\alpha_1) \to (1-\alpha_1)(1-\alpha_2) \to \cdots$};
+      \end{tikzpicture}
+      \caption{\textit{Alpha blending} duž zraka jednog piksela. Gausijani poređani po dubini
+      doprinose boji srazmerno svojoj alfi $\alpha_i$ i preostaloj transmitansi $T$,
+      koja monotono opada.}
+      \label{fig:blend}
+   \end{figure}
+
+   \subsection{Tile rasterizacija i kompletan cevovod}
+
+   Direktna primena jednačine \eqref{eq:discrete} - da svaki piksel prođe kroz sve
+   Gausijane - bila bi $O(N \cdot P)$ za $N$ Gausijana i $P$ piksela, i neupotrebljivo
+   spora na scenama sa milionima Gausijana. Rešenje je prostorna podela: slika se
+   deli na mrežu kvadratnih \textit{tile}-ova, a svaki Gausijan se, na osnovu svog
+   omotača iz Odeljka 2.3, dodeljuje samo \textit{tile}-ovima koje preseca
+   (\textit{Slika~\ref{fig:tiling}}). Pošto omotač po pravilu pokriva više
+   \textit{tile}-ova, isti Gausijan može se naći u više lista, pa je ukupan broj
+   parova \textit{(Gausijan, tile)} veći od $N$. Pri \textit{alpha blending}-u svaki
+   piksel onda prolazi samo kroz Gausijane svog \textit{tile}-a, kojih je tipično red veličine
+   manje nego u celoj sceni.
+
+   \begin{figure}[H]
+      \centering
+      \begin{tikzpicture}[>=Latex, scale=0.8]
+         \fill[myorange!20] (1,1) rectangle (4,3);
+         \draw[step=1, gray!55, thin] (0,0) grid (5,4);
+         \draw[thick, myblue, dashed] (2.5,2) circle (0.9);
+         \draw[thick, myred, fill=myred!20, rotate around={25:(2.5,2)}] (2.5,2) ellipse (0.7 and 0.4);
+         \fill (2.5,2) circle (1.2pt);
+      \end{tikzpicture}
+      \caption{Dodela \textit{tile}-ovima. Omotač Gausijana (isprekidani krug
+      poluprečnika $3\sigma$) preseca više \textit{tile}-ova (osenčeni), pa se
+      Gausijan upisuje u listu svakog od njih. Pri \textit{alpha blending}-u svaki
+      piksel prolazi samo kroz Gausijane svog \textit{tile}-a.}
+      \label{fig:tiling}
+   \end{figure}
+
+   Da bi se primenila \eqref{eq:discrete}, Gausijani unutar \textit{tile}-a moraju
+   biti poređani po dubini. Umesto zasebnog sortiranja svakog \textit{tile}-a, svi
+   parovi \textit{(Gausijan, tile)} sortiraju se odjednom po složenom ključu kod koga
+   viši bitovi nose indeks \textit{tile}-a a niži kvantizovanu dubinu. Jedno takvo
+   sortiranje istovremeno grupiše parove po \textit{tile}-ovima i unutar svakog ih
+   poređa \textit{front-to-back} - tačno redosled koji \textit{alpha blending} zahteva. Originalna
+   implementacija to radi paralelnim \textit{radix} sortiranjem na GPU-u; pošto
+   sortiranje nije fokus ovog rada, ono se ovde izvršava na procesoru.
+   Sortira se po dubini centra Gausijana, a ne po tačnoj dubini u svakom pikselu -
+   standardna aproksimacija u 3DGS-u koja znatno pojednostavljuje sortiranje. Ona može
+   izazvati treperenje (engl.\ \textit{popping}) pri rotaciji kamere, što je poznato
+   ograničenje izvornog algoritma \cite{stopthepop}, ali su za potrebe ovog rada te
+   greške prihvatljive.
+
+   Redosled \textit{front-to-back} omogućava i rano zaustavljanje. Kako transmitansa
+   $T$ iz \eqref{eq:update} monotono opada, čim padne ispod malog praga preostali
+   (dalji) Gausijani u \textit{tile}-u mogu se preskočiti bez vidljive greške; na
+   neprovidnim scenama to znatno smanjuje broj stvarno obrađenih Gausijana po pikselu.
+
+   Veličinu \textit{tile}-a originalna implementacija postavlja na $16 \times 16$
+   piksela; ovaj rad koristi $32 \times 32$ iz razloga vezanih za hardver.
+
+   Kompletan cevovod (\textit{Slika~\ref{fig:pipeline}}) tako čine učitavanje scene,
+   tri pripremne faze (projekcija, dodela \textit{tile}-ovima, sortiranje) i, na kraju,
+   \textit{alpha blending} koji proizvodi sliku. Pripremne faze organizuju podatke, dok
+   \textit{alpha blending} nosi najveći deo računa i predstavlja prirodnog kandidata za prebacivanje
+   na akcelerator.
+
    %====================================================================
    \newpage
    \printbibliography[title={Literatura}]
