@@ -198,84 +198,50 @@
    metodom u oblasti.
 
    \newpage
-   Ono što je zajedničko i NeRF-u i, posebno, 3DGS-u jeste da su osmišljeni i
-   implementirani gotovo isključivo za GPU kartice (CUDA), uz lakše varijante namenjene vebu (WebGL/WebGPU). Sam postupak
-   renderovanja čvrsto je vezan za SIMT model izvršavanja grafičkih procesora
-   (engl.\ \textit{Single Instruction, Multiple Threads}), u kome veliki broj niti
+   Ono što je zajedničko i \textbf{NeRF}-u i, posebno, \textbf{3DGS}-u jeste da su osmišljeni i
+   implementirani za GPU kartice (\textbf{CUDA} programski jezik), uz lakše varijante namenjene vebu (\textbf{WebGL}/\textbf{WebGPU}). Sam postupak
+   renderovanja čvrsto je vezan za \textbf{SIMT} (engl.\ \textit{Single Instruction, Multiple Threads}) model izvršavanja
+   grafičkih procesora, u kome veliki broj niti
    sinhrono izvršava isti program nad različitim podacima. U međuvremenu se
-   pojavila nova klasa hardvera namenjenog veštačkoj inteligenciji - takozvani
-   \textit{protočni} (engl.\ \textit{dataflow}) akceleratori - koja počiva na
-   bitno drugačijim načelima: eksplicitnom, programski upravljanom kretanju
-   podataka, odsustvu deljene memorije i SIMT izvršavanja, te računu organizovanom
-   oko pločica (engl.\ \textit{tiles}) i širokih vektorskih jedinica. Akcelerator
-   Wormhole kompanije Tenstorrent istaknut je predstavnik te klase, a skorašnji
-   radovi počeli su da na njega preslikavaju numeričke i naučne proračune ---
-   simulacije sistema od $N$ tela \cite{tt_nbody}, brze Furijeove transformacije
-   \cite{tt_fft} i druge numeričke jezgre \cite{tt_numerical}. Ipak, renderovanje
-   polja zračenja - i grafička rasterizacija uopšte - do sada nije bilo
-   preslikano ni na jedan ovakav akcelerator.
+   pojavila nova klasa čipova - akceleratora namenjenih veštačkoj inteligenciji (u nastavku: \emph{ML čipovi}) -
+   koji su optimizovani za izvršavanje modela mašinskog učenja.
 
-   Upravo taj jaz motiviše ovaj rad. Pitanje koje postavljamo glasi: može li se
-   računski najzahtevniji deo 3DGS renderovanja efikasno preslikati na protočni
-   akcelerator i da li je takvo rešenje konkurentno postojećima. Izazov nije mali
-   - algoritam je nepravilan, oslanja se na rasuto čitanje i upis podataka
-   (engl.\ \textit{scatter}/\textit{gather}) i na suštinski sekvencijalno stapanje
-   sortiranih Gausijana po svakom pikselu, što se ne uklapa očigledno u protočni
-   model zamišljen pre svega za guste linearno-algebarske operacije. Rad je stoga
-   koncipiran kao \emph{studija izvodljivosti}: ograničavamo se na prolaz unapred,
-   odnosno na renderovanje unapred obučene scene, bez obuke i bez diferencijabilne
-   rasterizacije, dok najskuplju fazu - alfa stapanje - implementiramo kao
-   namensko jezgro za Tenstorrent hardver.
+   Tenstorrentov \textit{Blackhole} čip jedan je takav čip. Kako je reč o
+   novom hardveru, tek počinju da se pojavljuju radovi koji ispituju njegove performanse
+   na različitim zadacima \cite{tt_nbody, tt_fft, tt_numerical},
+   dok renderovanje nije među njihovim primarnim namenama.
+
+   Konkretno, postavlja se pitanje: može li se računski najzahtevniji deo
+   3DGS renderovanja efikasno izvršiti na ML čipu i da li je takvo
+   rešenje konkurentno postojećim? Rad se ograničava na prolaz unapred (engl.\ \textit{forward pass}),
+   odnosno na renderovanje već istrenirane scene, bez podrške za diferencijabilnu
+   rasterizaciju i treniranje scene od nule.
 
    \subsection{Doprinosi i struktura rada}
 
    Doprinosi ovog rada mogu se sažeti u nekoliko tačaka:
 
    \begin{itemize}
-      \item \textbf{Jezgro za alfa stapanje na Tenstorrent hardveru.}
-            Implementirano je tt-metal jezgro koje izvršava alfa stapanje 3DGS
-            prizora na akceleratoru Wormhole. Prema našim saznanjima, reč je o
-            prvoj komponenti sistema za renderovanje polja zračenja koja je
-            preslikana na protočni akcelerator.
-      \item \textbf{Okruženje za poređenje triju izvršnih podloga}
-            (engl.\ \textit{backend}). Razvijena je hibridna arhitektura cevovoda
-            u kojoj se projekcija, dodela pločica i sortiranje izvršavaju na
-            procesoru, dok se alfa stapanje prepušta izabranoj podlozi. Tri
-            podloge - CPU (referentna implementacija u okruženju PyTorch),
-            CUDA (postojeće rešenje na grafičkom procesoru) i Tenstorrent ---
-            izložene su kroz jedinstven interfejs, što omogućava njihovo
-            neposredno poređenje pod istim uslovima.
-      \item \textbf{Raspoređivanje opterećenja po pravilu najdužeg posla} (LPT).
-            Budući da je broj Gausijana po pločici izrazito neravnomeran, naivna
-            podela pločica po jezgrima dovodi do toga da ukupno vreme renderovanja
-            diktira najopterećenije jezgro. Predložena je shema raspoređivanja
-            zasnovana na pravilu najdužeg posla (engl.\ \textit{Longest-Processing-Time
-            first}), koja osetno ujednačava opterećenje jezgara.
-      \item \textbf{Niz algoritamskih optimizacija.} Postupno se uvode
-            prilagođavanja referentnog algoritma osobenostima hardvera ---
-            aproksimativna eksponencijalna funkcija na vektorskoj (SFPU) jedinici,
-            odsecanje doprinosa Gausijana zanemarljive providnosti i ograničavanje
-            poluprečnika - uz analizu zašto je svako od njih korisno baš na ovoj
-            arhitekturi.
+      \item \textbf{Kernel za \textit{alpha blending} na Tenstorrent hardveru.}
+            
+            Implementiran je \textbf{tt-metal} kernel koje izvršava \textit{alpha blending} deo 3DGS algoritma
+            na Tenstorrent hardveru. To je prva implementacija 3DGS algoritma na Tenstorrent čipu.
+      
+      \item \textbf{Poređenje 3 razčličita \textit{backend}-a}
+            
+            Poređenje performansi 3 različitih \textit{backend}-a: CPU, GPU i Tenstorrent.
+
+      \newpage
+      \item \textbf{\textit{Longest-Processing-Time first} (LPT) raspoređivanje zadataka}.
+            
+         Budući da je broj Gausijana po \textit{tile}-u izrazito neravnomeran, naivna
+         podela \textit{tile}-ova po jezgrima dovodi do toga da ukupno vreme renderovanja
+         diktira najopterećenije jezgro. Umesto toga, implementacija je 
+         zasnovana na pravilu najdužeg posla (engl.\ \textit{Longest-Processing-Time
+         first}), koja osetno ujednačava opterećenje jezgara.
    \end{itemize}
 
-   Zajedno, ova rešenja dovode do toga da prebacivanje alfa stapanja na Wormhole
-   ostvaruje ubrzanje od preko $20\times$ u odnosu na referentnu CPU implementaciju
-   (detaljno u poglavlju 5). Analiza uskih grla pritom otkriva da, kada se stapanje
-   jednom prebaci na akcelerator, preostale faze na procesoru i prenos podataka
-   između domaćina i uređaja postaju novo usko grlo - što neposredno motiviše
-   pravce daljeg rada.
-
-   Ostatak rada organizovan je na sledeći način. Poglavlje 2 izlaže teorijske
-   osnove 3D Gaussian Splatting-a: reprezentaciju prizora, parametrizaciju
-   kovarijanse, projekciju iz tri u dve dimenzije i izvođenje jednačine alfa
-   stapanja koju jezgro implementira. Poglavlje 3 predstavlja arhitekturu
-   Tenstorrent hardvera i njegov programski model. Poglavlje 4 opisuje dizajn i
-   implementaciju rešenja - preslikavanje na Tensix jezgra, LPT raspoređivanje
-   i optimizacione tehnike. Poglavlje 5 donosi eksperimentalne rezultate i
-   poređenje izvršnih podloga, dok poglavlje 6 sumira zaključke i ocrtava pravce
-   budućeg rada.
-
+   Zajedno, ova rešenja dovode do ubrzanja od preko $20\times$ u odnosu na CPU implementaciju.
    %====================================================================
    \newpage
    \printbibliography[title={Literatura}]
