@@ -342,20 +342,21 @@
       \label{tab:notacija}
    \end{table}
 
+   \newpage
    \subsection{Geometrija Gausijana: skala i rotacija}
 
-   Kovarijansa mora biti simetrična i pozitivno semidefinitna da bi predstavljala
-   validan oblik - u suprotnom $\Sigma^{-1}$ iz jednačine \eqref{eq:gauss} ne
-   definiše ispravnu Gausovu raspodelu. Proizvoljnih šest brojeva ne garantuje to
-   svojstvo, pa se $\Sigma$ ne pamti direktno, već preko skale i rotacije:
+   Da bi kovarijansa opisivala stvaran elipsoid, mora biti simetrična i pozitivno
+   semidefinitna; u suprotnom $\Sigma^{-1}$ iz jednačine \eqref{eq:gauss} ne definiše
+   ispravnu Gausovu raspodelu. Da bi to svojstvo uvek bilo zadovoljeno, $\Sigma$ se ne pamti direktno,
+   već preko matrica skale i rotacije:
    \begin{equation}\label{eq:cov}
       \Sigma = R\,S\,S^\top R^\top = (RS)(RS)^\top,
    \end{equation}
    gde je $S = \mathrm{diag}(s_x, s_y, s_z)$ dijagonalna matrica skala, a $R$
-   matrica rotacije. Zapis $(RS)(RS)^\top$ je oblika $MM^\top$, pa je $\Sigma$
-   pozitivno semidefinitna po konstrukciji, za bilo koje vrednosti $S$ i $R$.
-   Geometrijski, jedinična sfera se najpre razvuče skalama u osno poravnat
-   elipsoid, a zatim rotira u svetski koordinatni sistem (\textit{Slika~\ref{fig:cov}}).
+   matrica rotacije. Pošto je zapis $(RS)(RS)^\top$ oblika $MM^\top$, dobijena
+   kovarijansa je uvek validna (pozitivno semidefinitna), za bilo koje vrednosti
+   $S$ i $R$. Geometrijski, jedinična sfera se najpre razvuče pomoću $S$ matrice u elipsoid, 
+   a zatim rotira pomoću $R$ matrice (\textit{Slika~\ref{fig:cov}}).
 
    \begin{figure}[H]
       \centering
@@ -374,14 +375,13 @@
          \node at (6.7,-1.15) {\small rotacija ($\Sigma$)};
       \end{tikzpicture}
       \caption{Konstrukcija kovarijanse $\Sigma = R S S^\top R^\top$: jedinična
-      sfera se skalira matricom $S$ u osno poravnat elipsoid, a zatim rotira
-      matricom $R$. Oblik je pozitivno semidefinitan po konstrukciji.}
+      sfera se skalira matricom $S$, a zatim rotira
+      matricom $R$. Ovakav zapis uvek daje validnu kovarijansu.}
       \label{fig:cov}
    \end{figure}
 
    Rotacija se pamti kao jedinični kvaternion $q = (q_0, q_1, q_2, q_3)$ umesto kao
-   matrica, jer ima četiri komponente umesto devet i ostaje validna rotacija nakon
-   normalizacije. Odgovarajuća matrica rotacije je
+   matrica, zbog memorijske optimizacije. Od kvaterniona se odgovarajuća matrica rotacije dobija na sledeći način:
    \begin{equation}\label{eq:quat}
       R(q) = \begin{bmatrix}
          1 - 2(q_2^2 + q_3^2) & 2(q_1 q_2 - q_0 q_3) & 2(q_1 q_3 + q_0 q_2) \\
@@ -390,6 +390,7 @@
       \end{bmatrix}.
    \end{equation}
 
+   \newpage
    \subsection{Boja: sferični harmonici}
 
    Boja Gausijana zadaje se sferičnim harmonicima (engl.\ \textit{spherical
