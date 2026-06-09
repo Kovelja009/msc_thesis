@@ -419,11 +419,11 @@
    \newpage
    \subsection{Projekcija na ravan slike}
 
-   Da bi se Gausijan nacrtao, njegov 3D oblik mora se preslikati u 2D elipsu na
-   ravni slike. Centar se projektuje standardnom perspektivnom projekcijom, ali
+   Da bi se Gausijan renderovao, njegov 3D oblik se mora preslikati u 2D elipsu na
+   ravni slike. Centar se projektuje standardnom \textit{pinhole} projekcijom, ali
    kovarijansa zahteva više pažnje.
 
-   Najpre se Gausijan prebacuje iz svetskih u kamera-koordinate \textit{view} matricom
+   Najpre se Gausijan prebacuje iz koordinata scene u kamera-koordinate matricom
    $W$ i translacijom $t$:
    \begin{equation}\label{eq:view}
       \mu_{cam} = W\mu + t, \qquad \Sigma_{cam} = W \Sigma W^\top.
@@ -433,7 +433,7 @@
    linearni (rotacioni) deo te transformacije matrica $W$, kovarijansa se množi sa
    $W$ i $W^\top$ sa obe strane.
 
-   Perspektivna projekcija preslikava tačku $(x, y, z)$ iz kamera-prostora na ravan
+   \textit{Pinhole} projekcija preslikava tačku $(x, y, z)$ iz kamera koordinatnog prostora na ravan
    slike kao
    \begin{equation}\label{eq:persp}
       \pi(x, y, z) = \left(\, f_x \tfrac{x}{z} + c_x,\ \ f_y \tfrac{y}{z} + c_y \,\right),
@@ -444,7 +444,7 @@
 
    \textbf{EWA} splatting \cite{ewa_splatting} taj problem rešava aproksimacijom
    prvog reda: $\pi$ se u okolini centra zamenjuje svojom tangentnom linearnom
-   aproksimacijom, čiji je nagib Jakobijan $J = \partial \pi / \partial (x,y,z)$.
+   aproksimacijom, čija je matrica prvih izvoda Jakobijan $J = \partial \pi / \partial (x,y,z)$.
    Diferenciranjem \eqref{eq:persp} dobija se
    \begin{equation}\label{eq:jac}
       J = \begin{bmatrix}
@@ -454,7 +454,7 @@
    \end{equation}
    što je dobra aproksimacija dokle god je Gausijan mali u odnosu na udaljenost od
    kamere; za Gausijane vrlo blizu kamere linearizacija se kvari, što se rešava
-   ograničavanjem poluprečnika. Primenom istog pravila o transformaciji
+   odbacivanjem Gausijana čiji poluprečnik pređe određeni prag. Primenom istog pravila o transformaciji
    kovarijanse, sada sa kompozicijom $JW$, dobija se 2D kovarijansa
    \begin{equation}\label{eq:sigma2d}
       \Sigma' = J\,W\,\Sigma\,W^\top J^\top,
@@ -463,8 +463,8 @@
    kovarijansa elipse na ekranu.
 
    Na dijagonalu $\Sigma'$ dodaje se mali član (\textit{low-pass filter}, reda
-   $0.3$ piksela$^2$): bez njega bi Gausijani manji od piksela imali gotovo
-   singularnu $\Sigma'$ i izazivali alias, dok dilatacija obezbeđuje da svaki pokriva
+   $0.3$ piksela): bez njega bi Gausijani manji od piksela imali gotovo
+   singularnu $\Sigma'$ i izazivali \textit{aliasing}, dok proširenje od $0.3$ piksela obezbeđuje da svaki pokriva
    bar oko jednog piksela. Najzad, iz $\Sigma'$ se računa poluprečnik omotača. Za
    simetričnu matricu $\Sigma' = \left(\begin{smallmatrix} a & b \\ b & c \end{smallmatrix}\right)$
    sopstvene vrednosti su
@@ -473,12 +473,14 @@
    \end{equation}
    a veća od njih, $\lambda_{max}$, jednaka je varijansi duž glavne ose elipse.
    Poluprečnik se uzima na $3\sigma$, tj.\ $r = 3\sqrt{\lambda_{max}}$, čime je
-   obuhvaćen praktično ceo vidljivi trag Gausijana. Taj poluprečnik određuje koje
-   piksele - i koje \textit{tile}-ove - Gausijan može da dotakne.
+   obuhvaćen praktično ceo vidljivi opseg Gausijana. Taj poluprečnik određuje koje
+   piksele i koje \textit{tile}-ove Gausijan dotiče.
    \textit{Slika~\ref{fig:proj}} prikazuje ceo postupak.
 
    \begin{figure}[H]
       \centering
+      \vspace{1.2cm}
+      \resizebox{0.7\textwidth}{!}{%
       \begin{tikzpicture}[>=Latex]
          \fill (0,0) circle (1.6pt);
          \node[left] at (-0.1,0) {\small kamera};
@@ -494,12 +496,14 @@
          \draw[thick, myblue, fill=myblue!15] (2,0.38) ellipse (0.06 and 0.33);
          \node[myblue, right] at (2.2,0.75) {\small $\Sigma'$ (2D)};
       \end{tikzpicture}
+      }
       \caption{Projekcija Gausijana na ravan slike. 3D oblik $\Sigma$ preslikava se
-      u 2D elipsu $\Sigma'$, pri čemu se nelinearna perspektivna projekcija
+      u 2D elipsu $\Sigma'$, pri čemu se nelinearna \textit{pinhole} projekcija
       linearizuje Jakobijanom oko centra (\textbf{EWA} splatting).}
       \label{fig:proj}
    \end{figure}
 
+   \newpage
    \subsection{\textit{Alpha blending}}
 
    Boja piksela nastaje slaganjem svih Gausijana koji ga prekrivaju, poređanih od
