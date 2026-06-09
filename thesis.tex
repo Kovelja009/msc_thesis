@@ -394,28 +394,29 @@
    \subsection{Boja: sferični harmonici}
 
    Boja Gausijana zadaje se sferičnim harmonicima (engl.\ \textit{spherical
-   harmonics}, \textbf{SH}) - skupom ortonormiranih baznih funkcija definisanih na
-   sferi pravaca. Boja se izražava kao njihova linearna kombinacija, pri čemu
-   koeficijenti određuju kako se menja sa pravcem gledanja: ista tačka može imati
-   različite boje iz različitih uglova, a viši stepen \textbf{SH} uvodi finije
-   ugaone varijacije i tako omogućava reprodukciju refleksija i sjaja
-   (\textit{Slika~\ref{fig:sh}}). U ovom radu koristi se samo nulti stepen, čija je
-   jedina bazna funkcija konstanta, pa je boja nezavisna od pravca i svodi se na
-   fiksni RGB vektor $c \in [0,1]^3$, dobijen kao $c = 0.5 + C_0 \cdot f_{dc}$, gde
-   je $C_0 = 1/(2\sqrt{\pi})$ a $f_{dc}$ nulti \textbf{SH} koeficijent. Viši stepeni
-   nisu implementirani jer ne menjaju strukturu \textit{alpha blending} algoritma,
-   već samo način na koji se računa boja.
+   harmonics}, \textbf{SH}) - skupom ortonormiranih baznih funkcija definisanih
+   na jediničnoj sferi. Boja se izražava kao njihova linearna kombinacija, pri
+   čemu koeficijenti određuju kako se ona menja u zavisnosti od pravca gledanja:
+   ista tačka može imati različitu boju posmatrana iz različitih uglova, a viši
+   stepeni \textbf{SH} unose detaljnije ugaone varijacije i time omogućavaju
+   reprodukciju refleksija i odsjaja (\textit{Slika~\ref{fig:sh}}). U ovom radu se zbog jednostavnosti implementacije
+   koristi samo nulti stepen, čija je jedina bazna funkcija konstanta, pa boja
+   ne zavisi od pravca i svodi se na fiksni RGB vektor $c \in [0,1]^3$, dat
+   izrazom $c = 0.5 + C_0 \cdot f_{dc}$, gde je $C_0 = 1/(2\sqrt{\pi})$, a
+   $f_{dc}$ nulti \textbf{SH} koeficijent.
 
    \begin{figure}[H]
       \centering
-      \includegraphics[width=0.72\textwidth]{spherical-harmonic.jpg}
+      \vspace{1.2cm}
+      \includegraphics[width=0.9\textwidth]{spherical-harmonic.jpg}
       \caption{Realni sferični harmonici $Y_p^q$ na sferi, za stepene $p = 0$ do $3$
       (vrste) i redove $q = -p, \dots, p$ (kolone); boja označava vrednost funkcije
       (plavo $-1$, crveno $+1$). Stepen $p = 0$ (vrh) je konstanta i jedini se koristi
-      u ovom radu, dok viši stepeni uvode sve finije ugaone varijacije~\cite{guezenoc2021}.}
+      u ovom radu, dok viši stepeni uvode sve detaljnije ugaone varijacije~\cite{guezenoc2021}.}
       \label{fig:sh}
    \end{figure}
 
+   \newpage
    \subsection{Projekcija na ravan slike}
 
    Da bi se Gausijan nacrtao, njegov 3D oblik mora se preslikati u 2D elipsu na
