@@ -197,11 +197,11 @@
    projektuju na ravan slike, sortiraju po dubini i potom stapaju u konačnu boju
    piksela \textit{alpha blending} algoritmom. Time
    se dobijaju interaktivne brzine (preko 30 fps) uz kvalitet uporediv
-   sa najboljim varijantama \textbf{NeRF}-a, što je \textbf{3DGS} učinilo dominantnom
+   sa najboljim varijantama NeRF-a, što je 3DGS učinilo dominantnom
    metodom u oblasti.
 
    \newpage
-   Ono što je zajedničko i \textbf{NeRF}-u i, posebno, \textbf{3DGS}-u jeste da su osmišljeni i
+   Ono što je zajedničko i NeRF-u i, posebno, 3DGS-u jeste da su osmišljeni i
    implementirani za GPU kartice (\textbf{CUDA} programski jezik), uz lakše varijante namenjene vebu (\textbf{WebGL}/\textbf{WebGPU}). Sam postupak
    renderovanja čvrsto je vezan za \textbf{SIMT} (engl.\ \textit{Single Instruction, Multiple Threads}) model izvršavanja
    grafičkih procesora, u kome veliki broj niti
@@ -251,7 +251,7 @@
    \section{3D Gaussian Splatting}
    %====================================================================
 
-   \textbf{3DGS} scena je predstavljena \emph{eksplicitno} pomoću stotine hiljada
+   3DGS scena je predstavljena \emph{eksplicitno} pomoću stotine hiljada
    do nekoliko miliona Gausijana raspoređenih u prostoru, od kojih svaki pokriva
    relativno mali, ograničen deo zapremine. Za razliku od \textbf{NeRF}-a, gde je scena
    skrivena u težinama neuralne mreže, ovde su svi parametri scene direktno
@@ -507,24 +507,24 @@
    \subsection{\textit{Alpha blending}}
 
    Boja piksela nastaje slaganjem svih Gausijana koji ga prekrivaju, poređanih od
-   najbližeg ka najdaljem. Polazna tačka je integral zapreminskog renderovanja
-   \cite{max_volume_rendering}, koji opisuje svetlost duž zraka, od bliske granice
-   $t_n$ do daleke $t_f$, kroz medijum sa emisijom $c(t)$ i gustinom $\sigma(t)$:
+   najbližeg ka najdaljem. Polazna tačka je \textit{volume rendering} integral
+   \cite{max_volume_rendering}, koji opisuje svetlost duž zraka, od bliske tačke
+   $t_n$ do daleke $t_f$, sa bojom koja se emituje u tački $c(t)$ i gustinom $\sigma(t)$:
    \begin{equation}\label{eq:vri}
       C = \int_{t_n}^{t_f} T(t)\,\sigma(t)\,c(t)\,dt, \qquad
       T(t) = \exp\!\left(-\int_{t_n}^{t} \sigma(s)\,ds\right).
    \end{equation}
-   Veličina $T(t)$ je transmitansa - udeo svetlosti koji bez prepreke stiže do
+   Veličina $T(t)$ je transmitansa - udeo svetlosti koji stiže do
    tačke $t$. Diskretizacijom po nizu sortiranih Gausijana integral prelazi u sumu
    \begin{equation}\label{eq:discrete}
       C = \sum_{i=1}^{n} c_i\,\alpha_i\,T_i, \qquad T_i = \prod_{j=1}^{i-1}(1 - \alpha_j),
    \end{equation}
    što je isti \textit{front-to-back} postupak slaganja poznat iz kompozicije slika
-   \cite{porter_duff}. Transmitansa $T_i$ je proizvod propusnosti svih Gausijana
-   ispred $i$-tog; kreće od $1$ i monotono opada.
+   \cite{porter_duff}. Transmitansa $T_i$ je proizvod propuštanja svetlosti svih Gausijana
+   koji su ispred $i$-tog; kreće od $1$ i monotono opada.
 
-   Za 3DGS, efektivna alfa $i$-tog Gausijana u datom pikselu je njegov
-   \textit{opacity} pomnožen vrednošću 2D Gausove funkcije u tom pikselu:
+   Za 3DGS, alfa vrednost $i$-tog Gausijana u datom pikselu se računa kao proizvod
+   \textit{opacity} vrednosti sa vrednošću 2D Gausove funkcije u tom pikselu:
    \begin{equation}\label{eq:alpha}
       \alpha_i = o_i \cdot \exp\!\left(-\tfrac{1}{2}\,d^\top \Sigma'^{-1} d\right),
       \qquad d = x_{px} - \mu'_i,
@@ -534,9 +534,9 @@
    \begin{equation}\label{eq:update}
       C \leftarrow C + c_i\,\alpha_i\,T, \qquad T \leftarrow T\,(1 - \alpha_i),
    \end{equation}
-   a postupak se prekida čim $T$ padne ispod malog praga, jer dalji Gausijani više
+   a postupak se prekida čim $T$ padne ispod određenog praga, nakon kog dalji Gausijani više
    ne mogu vidno doprineti pikselu (\textit{Slika~\ref{fig:blend}}). Jednačine
-   \eqref{eq:alpha} i \eqref{eq:update} čine jezgro renderera i predstavljaju
+   \eqref{eq:alpha} i \eqref{eq:update} čine srž renderovanja i predstavljaju
    upravo deo algoritma koji je u ovom radu implementiran kao Tenstorrent kernel.
 
    \begin{figure}[H]
@@ -552,7 +552,7 @@
             {\small $T:\ 1 \to (1-\alpha_1) \to (1-\alpha_1)(1-\alpha_2) \to \cdots$};
       \end{tikzpicture}
       \caption{\textit{Alpha blending} duž zraka jednog piksela. Gausijani poređani po dubini
-      doprinose boji srazmerno svojoj alfi $\alpha_i$ i preostaloj transmitansi $T$,
+      doprinose boji srazmerno svojoj $\alpha_i$ vrednosti i preostaloj transmitansi $T$,
       koja monotono opada.}
       \label{fig:blend}
    \end{figure}
