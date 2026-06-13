@@ -557,17 +557,17 @@
       \label{fig:blend}
    \end{figure}
 
-   \subsection{Tile rasterizacija i kompletan cevovod}
+   \subsection{Tile rasterizacija i kompletan algoritam}
 
    Direktna primena jednačine \eqref{eq:discrete} - da svaki piksel prođe kroz sve
    Gausijane - bila bi $O(N \cdot P)$ za $N$ Gausijana i $P$ piksela, i neupotrebljivo
    spora na scenama sa milionima Gausijana. Rešenje je prostorna podela: slika se
    deli na mrežu kvadratnih \textit{tile}-ova, a svaki Gausijan se, na osnovu svog
-   omotača iz Odeljka 2.4, dodeljuje samo \textit{tile}-ovima koje preseca
+   omotača iz Odeljka 2.4, dodeljuje samo \textit{tile}-ovima koje "dodiruje"
    (\textit{Slika~\ref{fig:tiling}}). Pošto omotač po pravilu pokriva više
    \textit{tile}-ova, isti Gausijan može se naći u više lista, pa je ukupan broj
-   parova \textit{(Gausijan, tile)} veći od $N$. Pri \textit{alpha blending}-u svaki
-   piksel onda prolazi samo kroz Gausijane svog \textit{tile}-a, kojih je tipično red veličine
+   parova \textit{(Gausijan, tile)} veći od $N$. Pri \textit{alpha blending} renderovanju svaki
+   piksel onda prolazi samo kroz Gausijane svog \textit{tile}-a, kojih je tipično znatno
    manje nego u celoj sceni.
 
    \begin{figure}[H]
@@ -589,9 +589,9 @@
    Da bi se primenila \eqref{eq:discrete}, Gausijani unutar \textit{tile}-a moraju
    biti poređani po dubini. Umesto zasebnog sortiranja svakog \textit{tile}-a, svi
    parovi \textit{(Gausijan, tile)} sortiraju se odjednom po složenom ključu kod koga
-   viši bitovi nose indeks \textit{tile}-a a niži kvantizovanu dubinu. Jedno takvo
+   viši bitovi nose indeks \textit{tile}-a a niži dubinu. Jedno takvo
    sortiranje istovremeno grupiše parove po \textit{tile}-ovima i unutar svakog ih
-   poređa \textit{front-to-back} - tačno redosled koji \textit{alpha blending} zahteva. Originalna
+   poređa \textit{front-to-back} - tačno kako \textit{alpha blending} i zahteva. Originalna
    implementacija to radi paralelnim \textit{radix} sortiranjem na GPU-u; pošto
    sortiranje nije fokus ovog rada, ono se ovde izvršava na procesoru.
    Sortira se po dubini centra Gausijana, a ne po tačnoj dubini u svakom pikselu -
@@ -600,19 +600,21 @@
    ograničenje izvornog algoritma \cite{stopthepop}, ali su za potrebe ovog rada te
    greške prihvatljive.
 
+   \newpage
+
    Redosled \textit{front-to-back} omogućava i rano zaustavljanje. Kako transmitansa
    $T$ iz \eqref{eq:update} monotono opada, čim padne ispod malog praga preostali
    (dalji) Gausijani u \textit{tile}-u mogu se preskočiti bez vidljive greške; na
-   neprovidnim scenama to znatno smanjuje broj stvarno obrađenih Gausijana po pikselu.
+   scenama koje imaju dosta neprovidnih objekata to znatno smanjuje broj stvarno obrađenih Gausijana po pikselu.
 
-   Veličinu \textit{tile}-a originalna implementacija postavlja na $16 \times 16$
-   piksela; ovaj rad koristi $32 \times 32$ iz razloga vezanih za hardver.
+   Za veličinu \textit{tile}-a originalna implementacija postavlja na $16 \times 16$
+   piksela; ovaj rad koristi $32 \times 32$ iz hardverskih razloga.
 
-   Kompletan cevovod (\textit{Slika~\ref{fig:pipeline}}) tako čine učitavanje scene,
+   Kompletan algoritam (\textit{Slika~\ref{fig:pipeline}}) tako čine učitavanje scene,
    tri pripremne faze (projekcija, dodela \textit{tile}-ovima, sortiranje) i, na kraju,
    \textit{alpha blending} koji proizvodi sliku. Pripremne faze organizuju podatke, dok
-   \textit{alpha blending} nosi najveći deo računa i predstavlja prirodnog kandidata za prebacivanje
-   na akcelerator.
+   \textit{alpha blending} nosi najveći deo izračunavanja i predstavlja prirodnog kandidata za prebacivanje
+   na čip.
 
    %====================================================================
    \newpage
